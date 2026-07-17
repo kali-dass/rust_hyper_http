@@ -1,15 +1,43 @@
 use http_body_util::Full;
 use hyper::body::Bytes;
+use hyper::header::CONTENT_TYPE;
 use hyper::service::service_fn;
-use hyper::{Request, Response};
+use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
+use serde::Serialize;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
+#[derive(Serialize)]
+struct HelloResponse {
+    test: String,
+}
+
+fn json_response(status: StatusCode, body: Vec<u8>) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .header(CONTENT_TYPE, "application/json")
+        .body(Full::new(Bytes::from(body)))
+        .expect("response builder received a valid status and header")
+}
+
 async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("Hello world"))))
+    let payload = HelloResponse {
+        test: "van".to_string(),
+    };
+
+    Ok(match serde_json::to_vec(&payload) {
+        Ok(body) => json_response(StatusCode::OK, body),
+        Err(err) => {
+            eprintln!("Error serializing response: {}", err);
+            json_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                br#"{"error":"internal server error"}"#.to_vec(),
+            )
+        }
+    })
 }
 
 #[tokio::main]
